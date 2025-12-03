@@ -5,16 +5,55 @@ from __future__ import print_function, division
 import logging
 import pprint
 import time
+import datetime as dt
 
 from sllurp.util import monotonic
 from sllurp.llrp import LLRPReaderConfig, LLRPReaderClient, LLRPReaderState
 from sllurp.log import get_logger
 from sllurp.log import is_general_debug_enabled, set_general_debug
 
+try:
+    import httpx
+except ImportError:  # pragma: no cover - optional dependency
+    httpx = None
+
 start_time = None
 
 numtags = 0
 logger = get_logger(__name__)
+
+
+def _send_tag_to_api(tag, reader_id="unknown"):
+    """Send a single tag event to the local HTTP API."""
+    if httpx is None:
+        logger.error('httpx not installed; cannot send RFID events to API')
+        return
+
+    raw_epc = tag.get('EPC') or tag.get('EPC-96')
+    if isinstance(raw_epc, bytes):
+        epc = raw_epc.decode('ascii')
+    else:
+        epc = str(raw_epc)
+
+    micros = tag.get('LastSeenTimestampUTC')
+    if micros is not None:
+        ts = dt.datetime.utcfromtimestamp(micros / 1_000_000)
+        iso_ts = ts.isoformat(timespec='microseconds') + 'Z'
+    else:
+        iso_ts = dt.datetime.utcnow().isoformat(timespec='microseconds') + 'Z'
+
+    payload = {
+        'epc': epc,
+        'timestamp': iso_ts,
+        'readerId': reader_id,
+        'antenna': str(tag.get('ChannelIndex')),
+    }
+
+    try:
+        httpx.post('http://localhost:3000/api/rfid-events',
+                   json=payload, timeout=5.0)
+    except Exception:
+        logger.exception('Failed to POST RFID event to API')
 
 def finish_cb(reader):
     runtime = monotonic() - start_time
@@ -33,6 +72,12 @@ def tag_report_cb(reader, tags):
         logger.info('saw tag(s): %s', pprint.pformat(tags))
         for tag in tags:
             numtags += tag['TagSeenCount']
+            try:
+                host, port = reader.get_peername()
+                reader_id = '{}:{}'.format(host, port)
+            except Exception:
+                reader_id = 'unknown'
+            _send_tag_to_api(tag, reader_id=reader_id)
     else:
         logger.info('no tags seen')
         return
