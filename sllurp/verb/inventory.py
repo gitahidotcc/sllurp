@@ -50,7 +50,7 @@ def _send_tag_to_api(tag, reader_id="unknown"):
     }
 
     try:
-        httpx.post('http://localhost:3000/api/rfid-events',
+        httpx.post('https://rams-staging.fclconsult.com/api/rfid-events',
                    json=payload, timeout=5.0)
     except Exception:
         logger.exception('Failed to POST RFID event to API')
