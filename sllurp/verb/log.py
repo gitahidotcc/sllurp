@@ -41,6 +41,11 @@ class CsvLogger(object):
                              datetime.datetime(1970, 1, 1)).total_seconds()
             antenna = tag['AntennaID']
             rssi = tag['PeakRSSI']
+            
+            logger.info(
+                'EPC event: ts=%s reader=%s antenna=%s rssi=%s epc=%s',
+                timestamp, reader, antenna, rssi, epc
+            )
             self.rows.append((timestamp, reader, antenna, rssi, epc))
             self.num_tags += tag['TagSeenCount']
 
